@@ -80,9 +80,6 @@ opts[f"{option_prefix}pc_hypre_boomeramg_max_iter"] = 1
 opts[f"{option_prefix}pc_hypre_boomeramg_cycle_type"] = "v"
 ksp.setFromOptions()
 
-# I want to note that I actually have no idea if this is working because
-# pyvista seems to have a bug for me where it's causing memory issues.
-
 # Start the pyvista frame buffer
 pyvista.start_xvfb()
 
@@ -128,7 +125,9 @@ for i in range(num_steps):
         # Writes the plot to the next frame
         plotter.write_frame()
     except:
+        # Closes the plot if an error is encountered so I can see what failed
         plotter.close()
         quit()
 
+# Closes the plot
 plotter.close()
