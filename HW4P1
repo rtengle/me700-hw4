@@ -21,16 +21,16 @@ import pyvista
 # Define temporal parameters
 t = 0  # Start time
 T = 1.0  # Final time
-num_steps = 50 # Number of steps
+num_steps = 70 # Number of steps
 dt = T / num_steps  # time step size
-S = 0.1 # Growth factor or coefficient
+S = 1 # Growth factor or coefficient
 
 # This is the initial condition for our system. It obeys the boundary conditions set above.
 def initial_condition(x, a=5):
     return numpy.sin(numpy.pi*x[0])*numpy.sin(numpy.pi*x[1])
 
 # Create a unit square with 10 elements along each axis for 100 elements total
-domain = mesh.create_unit_square(MPI.COMM_WORLD, 10, 10)
+domain = mesh.create_unit_square(MPI.COMM_WORLD, 50, 50)
 
 # Create a 1D lagrange function space
 V = fem.functionspace(domain, ("Lagrange", 1))
@@ -44,6 +44,7 @@ bc = fem.dirichletbc(PETSc.ScalarType(0), fem.locate_dofs_topological(V, fdim, b
 
 # Define the function being solved for H
 H = fem.Function(V)
+H.name = "H"
 H.interpolate(initial_condition)
 
 # Define the function describing the previous timestep's H
@@ -54,7 +55,7 @@ H0.interpolate(initial_condition)
 v = ufl.TestFunction(V)
 
 # Define the functional F that relates H and v
-F = (H-H0)*v*ufl.dx - S * dt * H**3 * ufl.dot(ufl.grad(H), ufl.grad(v)) * ufl.dx
+F = (H-H0)*v*ufl.dx + S * dt * H**3 * ufl.dot(ufl.grad(H), ufl.grad(v)) * ufl.dx
 
 # Load the problem and boundary conditions to a non-linear problem class
 problem = NonlinearProblem(F, H, bcs=[bc])
@@ -110,20 +111,24 @@ renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
                             clim=[0, max(H.x.array)])
 
 for i in range(num_steps):
-    # Increases time step
-    t += dt
-    # Solves for H using the previous time step H0
-    r = solver.solve(H)
-    # Prints which iterating it's currently on
-    print(f"Step {int(t / dt)}: num iterations: {r[0]}")
-    # Updates the H0 to the sovled time step
-    H0.x.array[:] = H.x.array
+    try:
+        # Increases time step
+        t += dt
+        # Solves for H using the previous time step H0
+        r = solver.solve(H)
+        # Prints which iterating it's currently on
+        print(f"Step {int(t / dt)}: num iterations: {r[0]}")
+        # Updates the H0 to the sovled time step
+        H0.x.array[:] = H.x.array
 
-    # Replaces the height map from before
-    new_warped = grid.warp_by_scalar("H", factor=1)
-    warped.points[:, :] = new_warped.points
-    warped.point_data["H"][:] = H.x.array
-    # Writes the plot to the next frame
-    plotter.write_frame()
+        # Replaces the height map from before
+        new_warped = grid.warp_by_scalar("H", factor=1)
+        warped.points[:, :] = new_warped.points
+        warped.point_data["H"][:] = H.x.array
+        # Writes the plot to the next frame
+        plotter.write_frame()
+    except:
+        plotter.close()
+        quit()
 
 plotter.close()
