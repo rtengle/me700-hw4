@@ -1,0 +1,151 @@
+import matplotlib as mpl
+import pyvista
+import ufl
+import numpy as np
+
+from petsc4py import PETSc
+from mpi4py import MPI
+
+from basix.ufl import element, mixed_element
+from dolfinx import default_real_type, log, plot
+from dolfinx.fem import Function, functionspace, locate_dofs_topological, dirichletbc
+from dolfinx.fem.petsc import NonlinearProblem
+from dolfinx.io import XDMFFile
+from dolfinx.mesh import CellType, create_unit_square, create_rectangle, locate_entities_boundary
+from dolfinx.nls.petsc import NewtonSolver
+
+# Save all logging to file
+log.set_output_file("log.txt")
+# -
+
+# Next, various model parameters are defined:
+
+dt = 5.0e-06  # time step
+theta = 1  # time stepping family, e.g. theta=1 -> backward Euler, theta=0.5 -> Crank-Nicholson
+S = 0.1
+
+# A unit square mesh with 96 cells edges in each direction is created,
+# and on this mesh a
+# {py:class}`FunctionSpace <dolfinx.fem.FunctionSpace>` `ME` is built
+# using a pair of linear Lagrange elements.
+
+# Define mesh
+nx, ny = 50, 50
+msh = create_rectangle(MPI.COMM_WORLD, [np.array([-2, -2]), np.array([2, 2])],
+                               [nx, ny], CellType.triangle)
+P1 = element("Lagrange", msh.basix_cell(), 1, dtype=default_real_type)
+ME = functionspace(msh, mixed_element([P1, P1]))
+W_dummy = functionspace(msh, ("Lagrange", 1))
+
+v, w = ufl.TestFunctions(ME)
+
+u = Function(ME)  # current solution
+u0 = Function(ME)  # solution from previous converged step
+
+# Split mixed functions
+H, eta = ufl.split(u)
+H0, eta0 = ufl.split(u0)
+
+u.name = "u"
+u.x.array[:] = 0.0
+
+# Create initial condition
+def initial_condition(x, a=5):
+    return 1 + np.exp(-a * (x[0]**2 + x[1]**2))
+
+u.sub(0).interpolate(initial_condition)
+u.x.scatter_forward()
+
+H_mid = (1.0 - theta) * H0 + theta * H
+eta_mid = (1.0 - theta) * eta0 + theta * eta
+
+F0 = (
+    ( (H - H0)*v - (S/3 * H_mid**3 * ufl.dot(ufl.grad(eta_mid), ufl.grad(v))) * dt ) * ufl.dx
+)
+F1 = (
+    ( ufl.dot(ufl.grad(H), ufl.grad(w)) - eta*w ) * ufl.dx
+)
+F = F0 + F1
+
+fdim = msh.topology.dim - 1
+boundary_facets = locate_entities_boundary(
+    msh, fdim, lambda x: np.full(x.shape[1], True, dtype=bool))
+bc_H = dirichletbc(PETSc.ScalarType(1), locate_dofs_topological(ME.sub(0), fdim, boundary_facets), ME.sub(0))
+bc_eta = dirichletbc(PETSc.ScalarType(0), locate_dofs_topological(ME.sub(1), fdim, boundary_facets), ME.sub(1))
+
+# +
+# Create nonlinear problem and Newton solver
+problem = NonlinearProblem(F, u, bcs=[bc_H, bc_eta])
+solver = NewtonSolver(MPI.COMM_WORLD, problem)
+solver.convergence_criterion = "incremental"
+solver.rtol = np.sqrt(np.finfo(default_real_type).eps) * 1e-2
+
+# We can customize the linear solver used inside the NewtonSolver by
+# modifying the PETSc options
+ksp = solver.krylov_solver
+opts = PETSc.Options()  # type: ignore
+option_prefix = ksp.getOptionsPrefix()
+opts[f"{option_prefix}ksp_type"] = "preonly"
+opts[f"{option_prefix}pc_type"] = "lu"
+sys = PETSc.Sys()  # type: ignore
+# For factorisation prefer MUMPS, then superlu_dist, then default
+use_superlu = PETSc.IntType == np.int64  # or PETSc.ScalarType == np.complex64
+if sys.hasExternalPackage("mumps") and not use_superlu:
+    opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
+elif sys.hasExternalPackage("superlu_dist"):
+    opts[f"{option_prefix}pc_factor_mat_solver_type"] = "superlu_dist"
+ksp.setFromOptions()
+
+file = XDMFFile(MPI.COMM_WORLD, "demo_ch/output.xdmf", "w")
+file.write_mesh(msh)
+
+# Step in time
+t = 0.0
+
+T = 50 * dt
+
+# Get the sub-space for c and the corresponding dofs in the mixed space
+# vector
+V0, dofs = ME.sub(0).collapse()
+
+c = u.sub(0)
+u0.x.array[:] = u.x.array
+
+pyvista.start_xvfb()
+
+grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(W_dummy))
+
+plotter = pyvista.Plotter()
+plotter.open_gif("H_time.gif", fps=10)
+
+u1_h =u.sub(0).collapse()
+grid.point_data["u"] = u1_h.x.array
+warped = grid.warp_by_scalar("u", factor=1)
+
+viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
+sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
+             position_x=0.1, position_y=0.8, width=0.8, height=0.1)
+
+renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+                            cmap=viridis, scalar_bar_args=sargs,
+                            clim=[0, max(u1_h.x.array)])
+
+while t < T:
+    try:
+        t += dt
+        r = solver.solve(u)
+        print(f"Step {int(t / dt)}: num iterations: {r[0]}")
+        u0.x.array[:] = u.x.array
+        file.write_function(c, t)
+        u1_h =u.sub(0).collapse()
+
+        # Update plot
+        new_warped = grid.warp_by_scalar("u", factor=1)
+        warped.points[:, :] = new_warped.points
+        warped.point_data["u"][:] = u1_h.x.array
+        plotter.write_frame()
+    except:
+        plotter.close()
+        file.close()
+        quit()
+
