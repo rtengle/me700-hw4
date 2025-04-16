@@ -13,7 +13,7 @@ import pyvista
 
 # This is a time-stepping non-linear Poisson Equation taking the form:
 #
-# dH/dt + S*div( H^3 grad(H) ) = 0
+# dH/dt - S*div( H^3 grad(H) ) = 0
 # H = 0 @ Boundary
 #
 # This is iterated step-by-step using an implicit scheme via a Nonlinear solver
