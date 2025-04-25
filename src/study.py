@@ -91,22 +91,26 @@ def run_study(nx, ny, T, ns, alpha=1, initial_condition=initial_condition, C1=np
     for i in range(ns):
         t += dt
 
-        # Update the right hand side reusing the initial vector
-        with b.localForm() as loc_b:
-            loc_b.set(0)
-        assemble_vector(b, linear_form)
+        try:
+            # Update the right hand side reusing the initial vector
+            with b.localForm() as loc_b:
+                loc_b.set(0)
+            assemble_vector(b, linear_form)
 
-        # Apply Dirichlet boundary condition to the vector
-        apply_lifting(b, [bilinear_form], [[bc]])
-        b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
-        set_bc(b, [bc])
+            # Apply Dirichlet boundary condition to the vector
+            apply_lifting(b, [bilinear_form], [[bc]])
+            b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+            set_bc(b, [bc])
 
-        # Solve linear problem
-        solver.solve(b, uh.x.petsc_vec)
-        uh.x.scatter_forward()
+            # Solve linear problem
+            solver.solve(b, uh.x.petsc_vec)
+            uh.x.scatter_forward()
 
-        # Update solution at previous time step (u_n)
-        u_n.x.array[:] = uh.x.array
+            # Update solution at previous time step (u_n)
+            u_n.x.array[:] = uh.x.array
+        except:
+            print('Solver failed')
+            break
 
         # Update plot
         if make_plot:

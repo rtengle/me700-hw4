@@ -64,14 +64,14 @@ for i in range(50):
     for j in range(50):
         print(f'Time steps: {ns + 5}')
         s_tnew, u_tnew = run_study(nxy, nxy, T, ns + 5, alpha=a, make_plot=False, initial_condition=initial_condition)
-        if np.abs(u_pnew - u_tnew).max() <= 1e-6:
+        if np.abs(u_pnew - u_tnew).max() <= 1e-4:
             break
         else:
             s_pnew = s_tnew
             u_pnew = u_tnew
             ns += 5
     s_pnew, u_pnew = run_study(nxy + 5, nxy + 5, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition)
-    if np.abs(u_pnew.max() - u.max()) <= 1e-6:
+    if np.abs(u_pnew.max() - u.max()) <= 1e-4:
         s, u = s_pnew, u_pnew
         break
     else:
@@ -79,5 +79,20 @@ for i in range(50):
         nxy += 5
 
 # s, u = run_study(nxy, nxy, T, ns, alpha=a, make_plot=True, initial_condition=initial_condition)
+
+# Now we need to find a thing where it fails. There's just one problem: We're unconditionally stable
+# 
+# This setup uses an implicit scheme which, for the thermal problem, CANNOT be numerically unstable no matter the mesh size or time step.
+# That doesn't mean you can't get nonsense however. For example if you have a negative alpha, the system will become divergent:
+
+nxy = 50
+ns = 50
+
+a = -1
+T = 1
+s, u = run_study(nxy, nxy, T, ns, alpha=a, make_plot=True)
+
+# This is more so because the equation is unstable than anything, but it's still interesting to see.
+# As
 
 pass
