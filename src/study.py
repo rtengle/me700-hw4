@@ -19,7 +19,7 @@ from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, a
 def initial_condition(x, a=1):
     return a*np.sin(np.pi*x[0])*np.sin(np.pi*x[1])
 
-def run_study(nx, ny, T, ns, alpha=1, initial_condition=initial_condition, C1=np.array([0, 0]), C2 = np.array([1, 1]), make_plot=True, celltype='tri'):
+def run_study(nx, ny, T, ns, alpha=1, initial_condition=initial_condition, C1=np.array([0, 0]), C2 = np.array([1, 1]), make_plot=True, celltype='tri', degree=1, gif_name='u_time.gif'):
     # Runs the study for the heat equation dT/dt = a del^2 T.
     # nx : Number of x cells
     # ny : Number of y cells
@@ -35,7 +35,7 @@ def run_study(nx, ny, T, ns, alpha=1, initial_condition=initial_condition, C1=np
     cell = {'tri':mesh.CellType.triangle, 'quad':mesh.CellType.quadrilateral}
     domain = mesh.create_rectangle(MPI.COMM_WORLD, [C1, C2],
                                 [nx, ny], mesh.CellType.triangle)
-    V = fem.functionspace(domain, ("Lagrange", 1))
+    V = fem.functionspace(domain, ("Lagrange", degree))
 
     u_n = fem.Function(V)
     u_n.name = "u_n"
@@ -75,7 +75,7 @@ def run_study(nx, ny, T, ns, alpha=1, initial_condition=initial_condition, C1=np
         grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V))
 
         plotter = pyvista.Plotter()
-        plotter.open_gif("u_time.gif", fps=10)
+        plotter.open_gif(gif_name, fps=10)
 
         grid.point_data["uh"] = uh.x.array
         warped = grid.warp_by_scalar("uh", factor=1)
