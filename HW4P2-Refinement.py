@@ -25,6 +25,8 @@ ns = 5
 s, u = run_study(nxy, nxy, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition)
 s_pnew, u_pnew = s, u
 s_tnew, u_tnew = s, u
+lin_error = []
+
 
 # Position indexing
 for i in range(50):
@@ -33,6 +35,7 @@ for i in range(50):
     for j in range(50):
         print(f'Time steps: {ns + 5}')
         s_tnew, u_tnew = run_study(nxy, nxy, T, ns + 5, alpha=a, make_plot=False, initial_condition=initial_condition, C1=np.array([-2, -2]), C2=np.array([2, 2]))
+        lin_error += [np.abs(u_pnew - u_tnew).max()]
         if np.abs(u_pnew - u_tnew).max() <= tol:
             break
         else:
@@ -40,6 +43,7 @@ for i in range(50):
             u_pnew = u_tnew
             ns += 5
     s_pnew, u_pnew = run_study(nxy + 5, nxy + 5, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition, C1=np.array([-2, -2]), C2=np.array([2, 2]))
+    lin_error += [np.abs(u_pnew.max() - u.max()) ]
     if np.abs(u_pnew.max() - u.max()) <= tol:
         s, u = s_pnew, u_pnew
         break
@@ -49,11 +53,14 @@ for i in range(50):
 
 s_lin, u_lin = run_study(nxy, nxy, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition, gif_name='linear_refined.gif', C1=np.array([-2, -2]), C2=np.array([2, 2]))
 
+# This analysis so far has been using linear elements. We can switch to quadratic elements and see what happens:
+
 nxy = 5
 ns = 5
 s, u = run_study(nxy, nxy, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition, degree=2, C1=np.array([-2, -2]), C2=np.array([2, 2]))
 s_pnew, u_pnew = s, u
 s_tnew, u_tnew = s, u
+quad_error = []
 
 # Position indexing
 for i in range(50):
@@ -62,6 +69,7 @@ for i in range(50):
     for j in range(50):
         print(f'Time steps: {ns + 5}')
         s_tnew, u_tnew = run_study(nxy, nxy, T, ns + 5, alpha=a, make_plot=False, initial_condition=initial_condition, degree=2, C1=np.array([-2, -2]), C2=np.array([2, 2]))
+        quad_error += [np.abs(u_pnew - u_tnew).max()]
         if np.abs(u_pnew - u_tnew).max() <= tol:
             break
         else:
@@ -69,6 +77,7 @@ for i in range(50):
             u_pnew = u_tnew
             ns += 5
     s_pnew, u_pnew = run_study(nxy + 5, nxy + 5, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition, degree=2, C1=np.array([-2, -2]), C2=np.array([2, 2]))
+    quad_error += [np.abs(u_pnew.max() - u.max())]
     if np.abs(u_pnew.max() - u.max()) <= tol:
         s, u = s_pnew, u_pnew
         break
@@ -77,5 +86,11 @@ for i in range(50):
         nxy += 5
 
 s_quad, u_quad = run_study(nxy, nxy, T, ns, alpha=a, make_plot=False, initial_condition=initial_condition, degree=2, gif_name='quadratic_refined.gif', C1=np.array([-2, -2]), C2=np.array([2, 2]))
-
+plt.plot(lin_error, label='Linear Elements')
+plt.plot(quad_error, label='Quadratic Elements')
+plt.xlabel('Iteration Number')
+plt.ylabel('Change in Maximum Value')
+plt.title('Mesh Refinement of Thermal Simulation')
+plt.legend()
+plt.savefig('Convergence.png')
 # Based on our print-outs, the quadratic element needed significantly less refinement to converge, especially in space.
